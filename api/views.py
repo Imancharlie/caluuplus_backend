@@ -131,30 +131,6 @@ def student_profile(request):
 
 
 # Course Management Views
-@api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
-def add_course(request):
-    try:
-        student = Student.objects.get(user=request.user)
-    except Student.DoesNotExist:
-        return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    serializer = CourseAddSerializer(data=request.data)
-    if serializer.is_valid():
-        course_id = serializer.validated_data['course_id']
-        course = get_object_or_404(Course, id=course_id)
-        
-        # Check if course is already added
-        if StudentCourse.objects.filter(student=student, course=course).exists():
-            return Response({'error': 'Course already added'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        student_course = StudentCourse.objects.create(student=student, course=course)
-        return Response({
-            'message': 'Course added successfully',
-            'course': StudentCourseSerializer(student_course).data
-        }, status=status.HTTP_201_CREATED)
-    
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['DELETE'])
@@ -198,17 +174,36 @@ def update_grade(request, course_id):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([permissions.IsAuthenticated])
-def get_student_courses(request):
+def student_courses(request):
     try:
         student = Student.objects.get(user=request.user)
     except Student.DoesNotExist:
         return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
     
-    student_courses = StudentCourse.objects.filter(student=student)
-    serializer = StudentCourseSerializer(student_courses, many=True)
-    return Response(serializer.data)
+    if request.method == 'GET':
+        student_courses = StudentCourse.objects.filter(student=student)
+        serializer = StudentCourseSerializer(student_courses, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = CourseAddSerializer(data=request.data)
+        if serializer.is_valid():
+            course_id = serializer.validated_data['course_id']
+            course = get_object_or_404(Course, id=course_id)
+            
+            # Check if course is already added
+            if StudentCourse.objects.filter(student=student, course=course).exists():
+                return Response({'error': 'Course already added'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            student_course = StudentCourse.objects.create(student=student, course=course)
+            return Response({
+                'message': 'Course added successfully',
+                'course': StudentCourseSerializer(student_course).data
+            }, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 # GPA Calculation Views

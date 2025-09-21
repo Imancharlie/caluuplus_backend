@@ -308,7 +308,7 @@ http://localhost:8000/api
 ## 📚 **Course Management Endpoints**
 
 ### 10. Add Course to Student
-**Endpoint:** `POST /api/students/courses/add/`
+**Endpoint:** `POST /api/students/courses/`
 
 **Headers:** Required (authenticated)
 
@@ -625,7 +625,7 @@ class AcademicAPI {
 
   // Courses
   async addCourse(courseId) {
-    return this.request('/students/courses/add/', {
+    return this.request('/students/courses/', {
       method: 'POST',
       body: JSON.stringify({ course_id: courseId })
     });

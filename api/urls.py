@@ -16,8 +16,7 @@ urlpatterns = [
     path('students/profile/', views.student_profile, name='student-profile'),
     
     # Course Management endpoints
-    path('students/courses/', views.get_student_courses, name='get-student-courses'),
-    path('students/courses/add/', views.add_course, name='add-course'),
+    path('students/courses/', views.student_courses, name='student-courses'),
     path('students/courses/<uuid:course_id>/', views.remove_course, name='remove-course'),
     path('students/courses/<uuid:course_id>/grade/', views.update_grade, name='update-grade'),
     
