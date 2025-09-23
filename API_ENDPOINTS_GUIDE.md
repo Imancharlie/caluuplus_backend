@@ -330,13 +330,14 @@ http://localhost:8000/api
   "message": "Course added successfully",
   "course": {
     "id": "uuid",
-    "course": "course_uuid",
-    "course_code": "CS101",
-    "course_name": "Introduction to Programming",
-    "course_credits": 3,
-    "course_type": "core",
+    "code": "CS101",
+    "name": "Introduction to Programming",
+    "credits": 3,
+    "type": "core",
+    "semester": 1,
+    "year": 1,
     "grade": null,
-    "points": null
+    "added_at": null
   }
 }
 ```
@@ -418,21 +419,94 @@ http://localhost:8000/api
 
 **Success Response (200):**
 ```json
-[
-  {
-    "id": "uuid",
-    "course": "course_uuid",
-    "course_code": "CS101",
-    "course_name": "Introduction to Programming",
-    "course_credits": 3,
-    "course_type": "core",
-    "grade": "A",
-    "points": 5.0
-  }
-]
+{
+  "id": "uuid",
+  "courses": [
+    {
+      "id": "course_uuid",
+      "code": "CS101",
+      "name": "Introduction to Programming",
+      "credits": 3,
+      "type": "core",
+      "semester": 1,
+      "year": 1,
+      "grade": "A",
+      "added_at": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
+}
 ```
 
 **Error Responses:**
+- `401`: Authentication required
+- `404`: Student profile not found
+
+---
+
+### 14. Bulk Update Student Courses
+**Endpoint:** `PUT /api/students/courses/`
+
+**Headers:** Required (authenticated)
+
+**Request Body:**
+```json
+{
+  "courses": [
+    {
+      "id": "course_uuid",
+      "code": "CS101",
+      "name": "Introduction to Programming",
+      "credits": 3,
+      "type": "core",
+      "semester": 1,
+      "year": 1,
+      "grade": "A",
+      "added_at": "2024-01-15T10:30:00Z"
+    },
+    {
+      "id": "course_uuid_2",
+      "code": "CS102",
+      "name": "Data Structures",
+      "credits": 3,
+      "type": "core",
+      "semester": 1,
+      "year": 1,
+      "grade": "B+",
+      "added_at": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+**Validation Rules:**
+- `courses`: Array of course objects
+- Each course must have: `id`, `code`, `name`, `credits`, `type`, `semester`, `year`
+- Optional fields: `grade`, `added_at`
+
+**Success Response (200):**
+```json
+{
+  "message": "Courses updated successfully",
+  "courses": [
+    {
+      "id": "course_uuid",
+      "code": "CS101",
+      "name": "Introduction to Programming",
+      "credits": 3,
+      "type": "core",
+      "semester": 1,
+      "year": 1,
+      "grade": "A",
+      "added_at": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+**Error Responses:**
+- `400`: Validation errors
 - `401`: Authentication required
 - `404`: Student profile not found
 

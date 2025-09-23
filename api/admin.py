@@ -62,6 +62,11 @@ class StudentAdmin(admin.ModelAdmin):
 
 @admin.register(StudentCourse)
 class StudentCourseAdmin(admin.ModelAdmin):
-    list_display = ('student', 'course', 'grade', 'points', 'created_at')
-    list_filter = ('grade', 'created_at')
-    search_fields = ('student__user__display_name', 'course__code', 'course__name')
+    list_display = ('student', 'courses_count', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('student__user__display_name',)
+    readonly_fields = ('courses',)
+    
+    def courses_count(self, obj):
+        return len(obj.courses) if obj.courses else 0
+    courses_count.short_description = 'Number of Courses'

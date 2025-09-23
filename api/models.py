@@ -91,7 +91,6 @@ class Course(models.Model):
         ('core', 'Core'),
         ('elective', 'Elective'),
     ]
-    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code = models.CharField(max_length=20)
     name = models.CharField(max_length=200)
@@ -120,98 +119,58 @@ class Student(models.Model):
     semester = models.IntegerField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+    has_courses = models.BooleanField(default=False,blank=True)
     def __str__(self):
         return f"{self.user.display_name} - {self.program.name}"
-    
-    def get_gpa(self):
-        """Calculate current GPA for the student"""
-        student_courses = self.student_courses.filter(points__isnull=False)
-        
-        if not student_courses.exists():
-            return 0.0
-        
-        total_points = 0
-        total_credits = 0
-        
-        for student_course in student_courses:
-            total_points += student_course.points * student_course.course.credits
-            total_credits += student_course.course.credits
-        
-        if total_credits == 0:
-            return 0.0
-        
-        return round(total_points / total_credits, 2)
-    
-    def get_gpa_breakdown(self):
-        """Get detailed GPA breakdown"""
-        student_courses = self.student_courses.filter(points__isnull=False)
-        
-        breakdown = []
-        total_points = 0
-        total_credits = 0
-        
-        for student_course in student_courses:
-            contribution = student_course.points * student_course.course.credits
-            total_points += contribution
-            total_credits += student_course.course.credits
-            
-            breakdown.append({
-                'course_code': student_course.course.code,
-                'course_name': student_course.course.name,
-                'credits': student_course.course.credits,
-                'grade': student_course.get_grade_display(),
-                'points': student_course.points,
-                'contribution': round(contribution, 2)
-            })
-        
-        gpa = round(total_points / total_credits, 2) if total_credits > 0 else 0.0
-        
-        return {
-            'gpa': gpa,
-            'total_credits': total_credits,
-            'total_points': round(total_points, 2),
-            'graded_courses': student_courses.count(),
-            'breakdown': breakdown
-        }
 
 
-class StudentCourse(models.Model):
-    GRADE_CHOICES = [
-        ('A', 'A'),
-        ('B+', 'B+'),
-        ('B', 'B'),
-        ('C', 'C'),
-        ('D', 'D'),
-        ('E', 'E'),
-        ('F', 'F'),
-    ]
-    
-    GRADE_POINTS = {
-        'A': 5.0,
-        'B+': 4.5,
-        'B': 4.0,
-        'C': 3.0,
-        'D': 2.0,
-        'E': 1.0,
-        'F': 0.0,
-    }
-    
+
+class StudentCourse(models.Model): 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='student_courses')
-    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='student_courses')
-    grade = models.CharField(max_length=2, choices=GRADE_CHOICES, null=True, blank=True)
-    points = models.FloatField(null=True, blank=True)
+    student = models.OneToOneField(Student, on_delete=models.CASCADE, related_name='student_courses')
+    courses = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
-    class Meta:
-        unique_together = ['student', 'course']
-    
-    def save(self, *args, **kwargs):
-        if self.grade:
-            self.points = self.GRADE_POINTS.get(self.grade, 0.0)
-        super().save(*args, **kwargs)
-    
     def __str__(self):
-        return f"{self.student.user.display_name} - {self.course.code} ({self.grade or 'No Grade'})"
+        return f"{self.student.user.display_name} - {len(self.courses)} courses"
+
+    def save(self, *args, **kwargs):
+        """
+        Ensure the related student's has_courses flag stays in sync with
+        whether there are any courses stored for the student.
+        """
+        super().save(*args, **kwargs)
+        has_any_courses = bool(self.courses)
+        if self.student.has_courses != has_any_courses:
+            self.student.has_courses = has_any_courses
+            # Save only the field that changed to avoid unnecessary writes
+            self.student.save(update_fields=['has_courses'])
+
+    def add_course(self, course_data):
+        """
+        Add a course dict to the JSON list if not already present by id.
+        Returns True if added, False if it already existed.
+        """
+        course_id = str(course_data.get('id')) if course_data.get('id') is not None else None
+        existing_ids = {str(c.get('id')) for c in (self.courses or [])}
+        if course_id and course_id in existing_ids:
+            return False
+        courses_list = list(self.courses or [])
+        courses_list.append(course_data)
+        self.courses = courses_list
+        self.save()
+        return True
+
+    def remove_course(self, course_id):
+        """
+        Remove a course from the JSON list by its id. Returns True if removed.
+        """
+        target_id = str(course_id)
+        original_len = len(self.courses or [])
+        filtered = [c for c in (self.courses or []) if str(c.get('id')) != target_id]
+        if len(filtered) == original_len:
+            return False
+        self.courses = filtered
+        self.save()
+        return True

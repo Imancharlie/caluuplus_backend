@@ -84,29 +84,34 @@ class CourseSerializer(serializers.ModelSerializer):
 
 
 class StudentCourseSerializer(serializers.ModelSerializer):
-    course_code = serializers.CharField(source='course.code', read_only=True)
-    course_name = serializers.CharField(source='course.name', read_only=True)
-    course_credits = serializers.IntegerField(source='course.credits', read_only=True)
-    course_type = serializers.CharField(source='course.type', read_only=True)
-    
     class Meta:
         model = StudentCourse
-        fields = ('id', 'course', 'course_code', 'course_name', 'course_credits', 'course_type', 'grade', 'points')
+        fields = ('id', 'courses', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'created_at', 'updated_at')
+
+class CourseDataSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    code = serializers.CharField()
+    name = serializers.CharField()
+    credits = serializers.IntegerField()
+    type = serializers.CharField()
+    semester = serializers.IntegerField()
+    year = serializers.IntegerField()
+    added_at = serializers.DateTimeField(required=False, allow_null=True)
+
+class StudentCourseUpdateSerializer(serializers.Serializer):
+    courses = CourseDataSerializer(many=True)
 
 
 class StudentSerializer(serializers.ModelSerializer):
     university = UniversitySerializer(read_only=True)
     college = CollegeSerializer(read_only=True)
     program = ProgramSerializer(read_only=True)
-    courses = StudentCourseSerializer(source='student_courses', many=True, read_only=True)
-    gpa = serializers.SerializerMethodField()
-    
+    courses = serializers.JSONField(source='student_courses.courses', read_only=True)
+    has_courses = serializers.BooleanField(read_only=True)
     class Meta:
         model = Student
-        fields = ('id', 'university', 'college', 'program', 'year', 'semester', 'courses', 'gpa')
-    
-    def get_gpa(self, obj):
-        return obj.get_gpa()
+        fields = ('id', 'university', 'college', 'program', 'year', 'semester', 'courses', 'has_courses')
 
 
 class StudentCreateUpdateSerializer(serializers.ModelSerializer):
@@ -131,8 +136,6 @@ class TargetGPASerializer(serializers.Serializer):
     target_gpa = serializers.FloatField(min_value=0.0, max_value=5.0)
 
 
-class GradeUpdateSerializer(serializers.Serializer):
-    grade = serializers.ChoiceField(choices=StudentCourse.GRADE_CHOICES)
 
 
 class CourseAddSerializer(serializers.Serializer):

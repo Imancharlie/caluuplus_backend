@@ -9,7 +9,7 @@ from .serializers import (
     UserRegistrationSerializer, UserLoginSerializer, UserSerializer,
     UniversitySerializer, CollegeSerializer, ProgramSerializer, CourseSerializer,
     StudentSerializer, StudentCreateUpdateSerializer, StudentCourseSerializer,
-    GPABreakdownSerializer, TargetGPASerializer, GradeUpdateSerializer, CourseAddSerializer
+    GPABreakdownSerializer, TargetGPASerializer, CourseAddSerializer, StudentCourseUpdateSerializer
 )
 
 
@@ -95,9 +95,64 @@ class CourseListView(generics.ListAPIView):
 
 
 # Student Management Views
-@api_view(['GET', 'POST', 'PUT'])
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def student_data(request):
+    """
+    Get student data directly (without wrapper)
+    Returns: university, college, program, year, semester, courses
+    """
+    try:
+        student = Student.objects.get(user=request.user)
+        serializer = StudentSerializer(student)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except Student.DoesNotExist:
+        return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def student_profile_create(request):
+    """
+    Create student profile (POST-only)
+    - Creates a new profile for the authenticated user if one does not exist
+    - Returns 400 if profile already exists
+    - Response payload matches StudentSerializer (includes courses array)
+    """
+    try:
+        existing = Student.objects.get(user=request.user)
+        return Response({
+            'error': 'Student profile already exists',
+            'has_profile': True,
+            'profile': StudentSerializer(existing).data
+        }, status=status.HTTP_400_BAD_REQUEST)
+    except Student.DoesNotExist:
+        pass
+
+    serializer = StudentCreateUpdateSerializer(data=request.data, context={'request': request})
+    if serializer.is_valid():
+        student = serializer.save()
+        return Response({
+            'message': 'Student profile created successfully',
+            'has_profile': True,
+            'profile': StudentSerializer(student).data
+        }, status=status.HTTP_201_CREATED)
+
+    return Response({
+        'error': 'Validation failed',
+        'details': serializer.errors
+    }, status=status.HTTP_400_BAD_REQUEST)
+@api_view(['GET', 'POST', 'PUT', 'PATCH'])
 @permission_classes([permissions.IsAuthenticated])
 def student_profile(request):
+    """
+    Student Profile Management
+    
+    GET: Retrieve student profile
+    POST: Create new student profile (only if doesn't exist)
+    PUT: Update entire student profile (replace all fields)
+    PATCH: Partial update student profile (update only provided fields)
+    """
     try:
         student = Student.objects.get(user=request.user)
     except Student.DoesNotExist:
@@ -105,32 +160,266 @@ def student_profile(request):
     
     if request.method == 'GET':
         if not student:
-            return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({
+                'error': 'Student profile not found',
+                'message': 'Please create your student profile first',
+                'has_profile': False
+            }, status=status.HTTP_404_NOT_FOUND)
+        
         serializer = StudentSerializer(student)
-        return Response(serializer.data)
+        return Response({
+            'has_profile': True,
+            'profile': serializer.data
+        }, status=status.HTTP_200_OK)
     
     elif request.method == 'POST':
         if student:
-            return Response({'error': 'Student profile already exists'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                'error': 'Student profile already exists',
+                'message': 'Use PUT or PATCH to update your existing profile',
+                'has_profile': True,
+                'profile': StudentSerializer(student).data
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         serializer = StudentCreateUpdateSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             student = serializer.save()
-            return Response(StudentSerializer(student).data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                'message': 'Student profile created successfully',
+                'has_profile': True,
+                'profile': StudentSerializer(student).data
+            }, status=status.HTTP_201_CREATED)
+        
+        return Response({
+            'error': 'Validation failed',
+            'details': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
     
     elif request.method == 'PUT':
         if not student:
-            return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({
+                'error': 'Student profile not found',
+                'message': 'Please create your student profile first using POST',
+                'has_profile': False
+            }, status=status.HTTP_404_NOT_FOUND)
         
         serializer = StudentCreateUpdateSerializer(student, data=request.data, context={'request': request})
         if serializer.is_valid():
             student = serializer.save()
-            return Response(StudentSerializer(student).data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                'message': 'Student profile updated successfully',
+                'has_profile': True,
+                'profile': StudentSerializer(student).data
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            'error': 'Validation failed',
+            'details': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'PATCH':
+        if not student:
+            return Response({
+                'error': 'Student profile not found',
+                'message': 'Please create your student profile first using POST',
+                'has_profile': False
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = StudentCreateUpdateSerializer(student, data=request.data, partial=True, context={'request': request})
+        if serializer.is_valid():
+            student = serializer.save()
+            return Response({
+                'message': 'Student profile updated successfully',
+                'has_profile': True,
+                'profile': StudentSerializer(student).data
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            'error': 'Validation failed',
+            'details': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def student_profile_options(request):
+    """Get available options for creating/updating student profile"""
+    try:
+        universities = University.objects.all()
+        colleges = College.objects.all()
+        programs = Program.objects.all()
+        
+        return Response({
+            'universities': UniversitySerializer(universities, many=True).data,
+            'colleges': CollegeSerializer(colleges, many=True).data,
+            'programs': ProgramSerializer(programs, many=True).data,
+            'year_choices': [1, 2, 3, 4, 5],  # Common academic years
+            'semester_choices': [1, 2]  # Common semesters
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': 'Failed to fetch profile options',
+            'details': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # Course Management Views
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_student_courses_by_semester(request, semester, year):
+    """Get courses for a specific semester and year for the authenticated student"""
+    try:
+        student = Student.objects.get(user=request.user)
+    except Student.DoesNotExist:
+        return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        student_course = StudentCourse.objects.get(student=student)
+        courses = student_course.courses or []
+        
+        # Filter courses by semester and year
+        filtered_courses = [
+            course for course in courses 
+            if course.get('semester') == semester and course.get('year') == year
+        ]
+        
+        return Response({
+            'semester': semester,
+            'year': year,
+            'courses': filtered_courses,
+            'total_courses': len(filtered_courses)
+        }, status=status.HTTP_200_OK)
+        
+    except StudentCourse.DoesNotExist:
+        return Response({
+            'semester': semester,
+            'year': year,
+            'courses': [],
+            'total_courses': 0,
+            'message': 'No courses found for this student'
+        }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_student_courses_filtered(request):
+    """Get courses for the authenticated student with optional semester/year filtering"""
+    try:
+        student = Student.objects.get(user=request.user)
+    except Student.DoesNotExist:
+        return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        student_course = StudentCourse.objects.get(student=student)
+        courses = student_course.courses or []
+        
+        # Get filter parameters from query string
+        semester = request.query_params.get('semester')
+        year = request.query_params.get('year')
+        course_type = request.query_params.get('type')  # 'core' or 'elective'
+        
+        # Apply filters
+        filtered_courses = courses
+        
+        if semester is not None:
+            semester = int(semester)
+            filtered_courses = [
+                course for course in filtered_courses 
+                if course.get('semester') == semester
+            ]
+        
+        if year is not None:
+            year = int(year)
+            filtered_courses = [
+                course for course in filtered_courses 
+                if course.get('year') == year
+            ]
+        
+        if course_type:
+            filtered_courses = [
+                course for course in filtered_courses 
+                if course.get('type') == course_type
+            ]
+        
+        return Response({
+            'filters': {
+                'semester': semester,
+                'year': year,
+                'type': course_type
+            },
+            'courses': filtered_courses,
+            'total_courses': len(filtered_courses)
+        }, status=status.HTTP_200_OK)
+        
+    except StudentCourse.DoesNotExist:
+        return Response({
+            'filters': {
+                'semester': semester,
+                'year': year,
+                'type': course_type
+            },
+            'courses': [],
+            'total_courses': 0,
+            'message': 'No courses found for this student'
+        }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def save_courses_batch(request):
+    """Save multiple courses for the authenticated student in the JSON field"""
+    try:
+        courses_data = request.data.get('courses', [])
+        
+        if not courses_data:
+            return Response(
+                {'error': 'No courses provided'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get or create student profile
+        try:
+            student = Student.objects.get(user=request.user)
+        except Student.DoesNotExist:
+            return Response(
+                {'error': 'Student profile not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get or create StudentCourse record
+        student_course, created = StudentCourse.objects.get_or_create(student=student)
+        
+        # Format courses data for storage in JSON field
+        formatted_courses = []
+        for course_data in courses_data:
+            formatted_course = {
+                'id': course_data.get('course_id'),
+                'code': course_data.get('course_code'),
+                'name': course_data.get('course_name'),
+                'credits': course_data.get('credit_hour'),
+                'type': 'elective' if course_data.get('is_elective') else 'core',
+                'semester': course_data.get('semester'),
+                'year': course_data.get('year'),
+                'added_at': None  # Will be set when saved
+            }
+            formatted_courses.append(formatted_course)
+        
+        # Store all courses in the JSON field
+        student_course.courses = formatted_courses
+        student_course.save()
+        
+        return Response({
+            'message': f'Successfully saved {len(formatted_courses)} courses',
+            'courses': formatted_courses
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @api_view(['DELETE'])
@@ -142,39 +431,18 @@ def remove_course(request, course_id):
         return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
     
     try:
-        student_course = StudentCourse.objects.get(student=student, course_id=course_id)
-        student_course.delete()
-        return Response({'message': 'Course removed successfully'}, status=status.HTTP_200_OK)
+        student_course = StudentCourse.objects.get(student=student)
+        if student_course.remove_course(course_id):
+            return Response({'message': 'Course removed successfully'}, status=status.HTTP_200_OK)
+        else:
+            return Response({'error': 'Course not found'}, status=status.HTTP_404_NOT_FOUND)
     except StudentCourse.DoesNotExist:
-        return Response({'error': 'Course not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'No courses found'}, status=status.HTTP_404_NOT_FOUND)
 
 
-@api_view(['PUT'])
-@permission_classes([permissions.IsAuthenticated])
-def update_grade(request, course_id):
-    try:
-        student = Student.objects.get(user=request.user)
-    except Student.DoesNotExist:
-        return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    try:
-        student_course = StudentCourse.objects.get(student=student, course_id=course_id)
-    except StudentCourse.DoesNotExist:
-        return Response({'error': 'Course not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    serializer = GradeUpdateSerializer(data=request.data)
-    if serializer.is_valid():
-        student_course.grade = serializer.validated_data['grade']
-        student_course.save()
-        return Response({
-            'message': 'Grade updated successfully',
-            'course': StudentCourseSerializer(student_course).data
-        }, status=status.HTTP_200_OK)
-    
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(['GET', 'POST'])
+@api_view(['GET', 'POST', 'PUT'])
 @permission_classes([permissions.IsAuthenticated])
 def student_courses(request):
     try:
@@ -182,26 +450,72 @@ def student_courses(request):
     except Student.DoesNotExist:
         return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
     
+    # Get or create StudentCourse record
+    student_course, created = StudentCourse.objects.get_or_create(student=student)
+    
     if request.method == 'GET':
-        student_courses = StudentCourse.objects.filter(student=student)
-        serializer = StudentCourseSerializer(student_courses, many=True)
+        serializer = StudentCourseSerializer(student_course)
         return Response(serializer.data)
     
     elif request.method == 'POST':
+        # Add single course
         serializer = CourseAddSerializer(data=request.data)
         if serializer.is_valid():
             course_id = serializer.validated_data['course_id']
             course = get_object_or_404(Course, id=course_id)
             
-            # Check if course is already added
-            if StudentCourse.objects.filter(student=student, course=course).exists():
-                return Response({'error': 'Course already added'}, status=status.HTTP_400_BAD_REQUEST)
+            # Prepare course data
+            course_data = {
+                'id': str(course.id),
+                'code': course.code,
+                'name': course.name,
+                'credits': course.credits,
+                'type': course.type,
+                'semester': course.semester,
+                'year': course.year,
+                'added_at': None
+            }
             
-            student_course = StudentCourse.objects.create(student=student, course=course)
+            # Add course to JSON field
+            if student_course.add_course(course_data):
+                return Response({
+                    'message': 'Course added successfully',
+                    'course': course_data
+                }, status=status.HTTP_201_CREATED)
+            else:
+                return Response({'error': 'Course already added'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'PUT':
+        # Update all courses (bulk update)
+        serializer = StudentCourseUpdateSerializer(data=request.data)
+        if serializer.is_valid():
+            courses_data = serializer.validated_data['courses']
+            
+            # Convert to the format expected by the model
+            formatted_courses = []
+            for course in courses_data:
+                formatted_course = {
+                    'id': course['id'],
+                    'code': course['code'],
+                    'name': course['name'],
+                    'credits': course['credits'],
+                    'type': course['type'],
+                    'semester': course['semester'],
+                    'year': course['year'],
+                    'added_at': course.get('added_at')
+                }
+                formatted_courses.append(formatted_course)
+            
+            # Update the JSON field
+            student_course.courses = formatted_courses
+            student_course.save()
+            
             return Response({
-                'message': 'Course added successfully',
-                'course': StudentCourseSerializer(student_course).data
-            }, status=status.HTTP_201_CREATED)
+                'message': 'Courses updated successfully',
+                'courses': formatted_courses
+            }, status=status.HTTP_200_OK)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
